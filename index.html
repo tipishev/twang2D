@@ -1,0 +1,1469 @@
+<title>Twang 2D</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: the LED matrix is the stage on the left; a brass-trimmed control rack sits on the right and stacks under it on phones. */
+:root {
+  color-scheme: dark;
+  --bg: #0d0f12;           /* room around the matrix */
+  --panel: #15181d;        /* control rack */
+  --line: #262b33;         /* rack seams */
+  --fg: #e3e6eb;
+  --muted: #8b939f;
+  --brass: #c9a35b;        /* the door-stop spring */
+  --brass-dim: #5e4e2e;
+  --danger: #ff6a55;
+  --bezel: #050607;        /* matrix PCB */
+  --font-display: "Chakra Petch", "Arial Narrow", sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+html, body { height: auto; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 40px;
+}
+.app {
+  max-width: 1060px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 860px) { .app { grid-template-columns: minmax(0, 1fr); } }
+
+header.title-bar { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; }
+h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 32px;
+  letter-spacing: 0.04em;
+  margin: 0;
+  text-transform: uppercase;
+}
+h1 span { color: var(--brass); }
+.subtitle { color: var(--muted); font-family: var(--font-mono); font-size: 12px; }
+
+.stage { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.bezel {
+  background: var(--bezel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  max-width: 100%;
+}
+#matrix { display: block; width: 100%; height: auto; aspect-ratio: 1 / 1; max-width: 100%; outline: none; }
+.status-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 520px) { .status-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.status-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; font-family: var(--font-mono); }
+.status-value { color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lives { display: flex; gap: 5px; align-items: center; height: 21px; }
+.lives i { width: 9px; height: 9px; border-radius: 50%; background: #28ff78; box-shadow: 0 0 6px #28ff78; }
+.lives i.spent { background: var(--line); box-shadow: none; }
+
+.rack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.module {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.module h2 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--brass);
+  margin: 0;
+}
+.level-name { font-family: var(--font-display); font-size: 20px; font-weight: 700; margin: 0; text-wrap: balance; }
+.level-hint { color: var(--muted); margin: 0; }
+
+.spring-row { display: flex; gap: 14px; align-items: center; }
+#spring-pad { width: 150px; height: 150px; flex: none; touch-action: none; cursor: grab; border-radius: 50%; }
+#spring-pad:active { cursor: grabbing; }
+.spring-side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+button {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-radius: 4px;
+  border: 1px solid var(--brass);
+  background: transparent;
+  color: var(--brass);
+  padding: 8px 12px;
+  cursor: pointer;
+}
+button.primary { background: var(--brass); color: var(--bezel); }
+button:hover { filter: brightness(1.15); }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.keys { font-family: var(--font-mono); font-size: 12px; color: var(--muted); display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; }
+.keys dt { color: var(--fg); }
+.keys dd { margin: 0; }
+
+.setting { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; }
+.setting label { font-size: 13px; }
+.setting output { font-family: var(--font-mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.setting input[type="range"] { grid-column: 1 / -1; width: 100%; accent-color: var(--brass); }
+.toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.toggle input { accent-color: var(--brass); }
+select {
+  width: 100%;
+  background: var(--bezel);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-family: var(--font-body);
+}
+.button-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.log-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+th { text-align: left; font-weight: 500; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 4px 6px; border-bottom: 1px solid var(--line); }
+td { padding: 4px; border-bottom: 1px solid var(--line); }
+td.number, th.number { text-align: right; }
+tr.current td { color: var(--brass); }
+.note { color: var(--muted); font-size: 12px; margin: 0; }
+</style>
+
+<div class="app">
+  <header class="title-bar">
+    <h1>Twang <span>2D</span></h1>
+    <div class="subtitle">Playtest build · 64 × 64 LED matrix · 4,096 pixels</div>
+  </header>
+
+  <section class="stage" aria-label="LED matrix">
+    <div class="bezel">
+      <canvas id="matrix" tabindex="0" aria-label="Simulated 64 by 64 LED matrix. Use arrow keys to tilt and space to twang."></canvas>
+    </div>
+    <div class="status-row">
+      <div class="status-cell"><span class="label">Level</span><span class="status-value" id="hud-level">—</span></div>
+      <div class="status-cell"><span class="label">Lives</span><span class="lives" id="hud-lives"></span></div>
+      <div class="status-cell"><span class="label">Time</span><span class="status-value" id="hud-time">0.0 s</span></div>
+      <div class="status-cell"><span class="label">Est. draw @ 5 V</span><span class="status-value" id="hud-power">0.00 A</span></div>
+    </div>
+  </section>
+
+  <aside class="rack">
+    <div class="module">
+      <h2>Current level</h2>
+      <p class="level-name" id="level-name">Title screen</p>
+      <p class="level-hint" id="level-hint">Twang the spring to start.</p>
+    </div>
+
+    <div class="module">
+      <h2>Spring</h2>
+      <div class="spring-row">
+        <canvas id="spring-pad" aria-label="Virtual spring. Drag to tilt. Flick fast to twang."></canvas>
+        <div class="spring-side">
+          <button class="primary" id="twang-button" type="button">Twang</button>
+          <p class="note">Drag the knob to tilt. Flick it fast to twang.</p>
+        </div>
+      </div>
+      <dl class="keys">
+        <dt>Arrows / WASD</dt><dd>Tilt</dd>
+        <dt>Space</dt><dd>Twang (attack)</dd>
+        <dt>Gamepad</dt><dd>Left stick, any button</dd>
+      </dl>
+    </div>
+
+    <div class="module">
+      <h2>Playtest</h2>
+      <div class="setting">
+        <label for="setting-level">Jump to level</label>
+        <span></span>
+        <select id="setting-level" style="grid-column: 1 / -1"></select>
+      </div>
+      <div class="setting">
+        <label for="setting-speed">Player speed</label>
+        <output id="output-speed" for="setting-speed"></output>
+        <input type="range" id="setting-speed" min="8" max="40" step="1">
+      </div>
+      <div class="setting">
+        <label for="setting-attack">Twang radius</label>
+        <output id="output-attack" for="setting-attack"></output>
+        <input type="range" id="setting-attack" min="2" max="10" step="1">
+      </div>
+      <div class="setting">
+        <label for="setting-deadzone">Tilt dead zone</label>
+        <output id="output-deadzone" for="setting-deadzone"></output>
+        <input type="range" id="setting-deadzone" min="0" max="0.5" step="0.02">
+      </div>
+      <label class="toggle"><input type="checkbox" id="setting-god"> God mode (no deaths)</label>
+      <label class="toggle"><input type="checkbox" id="setting-sound" checked> Sound</label>
+      <div class="button-row">
+        <button type="button" id="restart-button">Restart level</button>
+        <button type="button" id="reset-log-button">Clear log</button>
+      </div>
+    </div>
+
+    <div class="module">
+      <h2>Run log</h2>
+      <div class="log-wrap">
+        <table>
+          <thead><tr><th>Level</th><th class="number">Deaths</th><th class="number">Best</th></tr></thead>
+          <tbody id="log-body"></tbody>
+        </table>
+      </div>
+      <p class="note">Deaths and best clear time per level, for this session.</p>
+    </div>
+  </aside>
+</div>
+
+<script>
+"use strict";
+
+// ---------------------------------------------------------------------------
+// Hardware model
+// ---------------------------------------------------------------------------
+
+const MATRIX_SIZE = 64; // LEDs per side of the square matrix, e.g. 64
+const MILLIAMPS_PER_CHANNEL = 20; // one WS2812 colour channel draws about 20 mA at full brightness
+const IDLE_MILLIAMPS_PER_LED = 1; // a dark WS2812 still draws about 1 mA for its controller
+const DISPLAY_GAMMA = 0.7; // brighten dim values on screen, because real LEDs look brighter than linear at low PWM
+const LED_DOT_RADIUS = 0.36; // LED dot radius as a fraction of the LED pitch
+const DARK_LED_COLOUR = "#15181d"; // unlit LED lens
+const BOARD_COLOUR = "#050607"; // PCB between the LEDs
+
+// LED colours as [red, green, blue], 0..255.
+const PLAYER_GREEN = [40, 255, 120];
+const ENEMY_RED = [255, 30, 20];
+const RUNNER_ORANGE = [255, 80, 10];
+const SPAWNER_MAGENTA = [140, 0, 120];
+const LAVA_HOT = [255, 90, 0];
+const LAVA_COOL = [45, 8, 0];
+const CONVEYOR_BASE_BLUE = [0, 10, 36];
+const CONVEYOR_STRIPE_BLUE = [20, 90, 255];
+const WALL_STEEL = [24, 32, 52];
+const EXIT_WHITE = [255, 255, 255];
+const EXIT_LOCKED_GREY = [30, 30, 30];
+const TWANG_YELLOW = [255, 220, 80];
+const BOSS_PURPLE = [200, 20, 160];
+const TEXT_AMBER = [255, 170, 40];
+const TEXT_RED = [255, 40, 30];
+
+// ---------------------------------------------------------------------------
+// Game tuning
+// ---------------------------------------------------------------------------
+
+const STARTING_LIVES = 3; // lives per run, as on the original Twang
+const TWANG_SECONDS = 0.45; // how long one twang attack lasts; the player cannot move during it
+const TWANG_GROW_SHARE = 0.3; // the attack ring reaches full radius in the first 30 % of the attack
+const PLAYER_HIT_DISTANCE = 1.2; // an enemy closer than 1.2 LEDs kills the player
+const BOSS_HIT_DISTANCE = 2.2; // the 3x3 boss kills the player closer than 2.2 LEDs
+const EXIT_REACH_DISTANCE = 1.5; // the player clears the level within 1.5 LEDs of the exit
+const INTRO_SECONDS = 1.4; // "LEVEL n" card before play starts
+const DEATH_SECONDS = 1.2; // explosion time before respawn
+const LEVEL_WON_SECONDS = 1.0; // exit ring animation before the next level
+const END_SCREEN_LOCK_SECONDS = 1.0; // ignore twangs on game over / victory for 1 s, so a late attack does not skip the screen
+const BOSS_INVULNERABLE_SECONDS = 1.2; // the boss cannot be hit again for 1.2 s after a hit
+
+// ---------------------------------------------------------------------------
+// Levels. Coordinates are LED columns and rows, 0..63; the border is always wall.
+// ---------------------------------------------------------------------------
+
+const LEVELS = [
+  {
+    name: "First tilt",
+    hint: "Tilt the spring to move. Reach the white exit.",
+    start: [6, 32], exit: [57, 32],
+    walls: [[20, 1, 2, 40], [40, 24, 2, 39]],
+  },
+  {
+    name: "Twang",
+    hint: "Twang the spring to attack. You cannot move while the attack rings out.",
+    start: [4, 32], exit: [59, 32],
+    walls: [[1, 1, 62, 29], [1, 35, 62, 28]],
+    enemies: [
+      { x: 16, y: 32 }, { x: 26, y: 31 }, { x: 26, y: 33 },
+      { x: 36, y: 32 }, { x: 46, y: 31 }, { x: 46, y: 33 }, { x: 54, y: 32 },
+    ],
+  },
+  {
+    name: "Patrol ring",
+    hint: "Enemies swing on fixed tracks. Time your path or twang through them.",
+    start: [5, 5], exit: [58, 58],
+    walls: [[14, 14, 36, 36]],
+    enemies: [
+      { x: 7, y: 32, axis: "y", range: 16, speed: 1.4 },
+      { x: 7, y: 20, axis: "x", range: 5, speed: 2.2 },
+      { x: 32, y: 7, axis: "x", range: 16, speed: 1.1 },
+      { x: 56, y: 32, axis: "y", range: 16, speed: 1.7, phase: 1 },
+      { x: 32, y: 56, axis: "x", range: 16, speed: 1.3, phase: 2 },
+      { x: 56, y: 44, axis: "x", range: 5, speed: 2.5 },
+    ],
+  },
+  {
+    name: "Spawners",
+    hint: "Magenta spawners fire enemies across the room. Weave up to the exit.",
+    start: [32, 58], exit: [32, 5],
+    spawners: [
+      { x: 1, y: 16, directionX: 1, directionY: 0, intervalSeconds: 1.4, speed: 16 },
+      { x: 62, y: 28, directionX: -1, directionY: 0, intervalSeconds: 1.1, speed: 20 },
+      { x: 1, y: 40, directionX: 1, directionY: 0, intervalSeconds: 0.9, speed: 14 },
+      { x: 62, y: 50, directionX: -1, directionY: 0, intervalSeconds: 1.6, speed: 24 },
+    ],
+  },
+  {
+    name: "Lava fields",
+    hint: "Lava is safe while it glows dim. Cross when it cools.",
+    start: [5, 32], exit: [58, 32],
+    lava: [
+      { x: 12, y: 1, width: 5, height: 62, onSeconds: 1.4, offSeconds: 1.4, offsetSeconds: 0 },
+      { x: 24, y: 1, width: 5, height: 62, onSeconds: 1.4, offSeconds: 1.4, offsetSeconds: 0.7 },
+      { x: 36, y: 1, width: 5, height: 62, onSeconds: 1.0, offSeconds: 1.6, offsetSeconds: 1.4 },
+      { x: 48, y: 1, width: 5, height: 62, onSeconds: 0.8, offSeconds: 1.2, offsetSeconds: 0.3 },
+    ],
+  },
+  {
+    name: "Conveyors",
+    hint: "Blue belts push you along the stripes. Push against them to get through.",
+    start: [5, 58], exit: [58, 5],
+    walls: [[1, 44, 46, 2], [17, 22, 46, 2]],
+    conveyors: [
+      { x: 20, y: 48, width: 27, height: 12, pushX: -1, pushY: 0, speed: 8 },
+      { x: 1, y: 26, width: 62, height: 16, pushX: 1, pushY: 0, speed: 13 },
+      { x: 1, y: 6, width: 62, height: 12, pushX: -1, pushY: 0, speed: 10 },
+    ],
+    enemies: [{ x: 30, y: 33, axis: "y", range: 7, speed: 1.5 }],
+    lava: [{ x: 28, y: 1, width: 3, height: 5, onSeconds: 1.2, offSeconds: 1.0, offsetSeconds: 0 }],
+  },
+  {
+    name: "The boss",
+    hint: "Hit the boss three times. The exit opens when it dies.",
+    start: [32, 58], exit: [32, 4],
+    walls: [[14, 20, 3, 3], [47, 20, 3, 3], [14, 40, 3, 3], [47, 40, 3, 3]],
+    boss: {
+      x: 32, y: 24,
+      waypoints: [[32, 24], [16, 30], [48, 30], [24, 14], [40, 14], [32, 36]],
+      hitPoints: 3, moveSpeed: 7, shotIntervalSeconds: 1.3, shotSpeed: 16,
+    },
+  },
+];
+
+// ---------------------------------------------------------------------------
+// 3x5 LED font, enough letters for the game's own messages
+// ---------------------------------------------------------------------------
+
+const GLYPH_COLUMNS = 3; // glyph width in LEDs
+const TINY_FONT = {
+  A: ["###", "#.#", "###", "#.#", "#.#"], D: ["##.", "#.#", "#.#", "#.#", "##."],
+  E: ["###", "#..", "##.", "#..", "###"], G: ["###", "#..", "#.#", "#.#", "###"],
+  I: ["###", ".#.", ".#.", ".#.", "###"], L: ["#..", "#..", "#..", "#..", "###"],
+  M: ["#.#", "###", "###", "#.#", "#.#"], N: ["##.", "#.#", "#.#", "#.#", "#.#"],
+  O: ["###", "#.#", "#.#", "#.#", "###"], R: ["##.", "#.#", "##.", "#.#", "#.#"],
+  S: ["###", "#..", "###", "..#", "###"], T: ["###", ".#.", ".#.", ".#.", ".#."],
+  U: ["#.#", "#.#", "#.#", "#.#", "###"], V: ["#.#", "#.#", "#.#", "#.#", ".#."],
+  W: ["#.#", "#.#", "###", "###", "#.#"], Y: ["#.#", "#.#", ".#.", ".#.", ".#."],
+  0: ["###", "#.#", "#.#", "#.#", "###"], 1: [".#.", "##.", ".#.", ".#.", "###"],
+  2: ["###", "..#", "###", "#..", "###"], 3: ["###", "..#", "###", "..#", "###"],
+  4: ["#.#", "#.#", "###", "..#", "..#"], 5: ["###", "#..", "###", "..#", "###"],
+  6: ["###", "#..", "###", "#.#", "###"], 7: ["###", "..#", "..#", "..#", "..#"],
+  8: ["###", "#.#", "###", "#.#", "###"], 9: ["###", "#.#", "###", "..#", "###"],
+};
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+
+const settings = {
+  playerSpeed: 22, // LEDs per second at full tilt, e.g. 22
+  twangRadius: 5, // attack ring radius in LEDs, e.g. 5
+  deadZone: 0.12, // tilt below this share of full tilt is ignored, e.g. 0.12
+  godMode: false,
+  sound: true,
+};
+
+const game = {
+  mode: "title", // one of title, intro, play, dying, levelWon, gameOver, victory
+  modeStartedAt: 0, // game clock when the mode began, e.g. 12.4
+  clock: 0, // seconds since boot, e.g. 83.2
+  levelIndex: 0, // e.g. 3
+  lives: STARTING_LIVES,
+  level: null, // runtime copy of the current level
+  player: null, // { x, y, twangStartedAt }
+  particles: [],
+  levelStartedAt: 0, // game clock when the current attempt began, e.g. 70.1
+  nextFireworkAt: 0, // game clock of the next victory firework, e.g. 91.0
+};
+
+const levelStats = LEVELS.map(() => ({ deaths: 0, bestSeconds: null })); // e.g. { deaths: 4, bestSeconds: 11.3 }
+
+const framebuffer = new Float32Array(MATRIX_SIZE * MATRIX_SIZE * 3); // additive RGB, 0..255+ per channel
+
+// ---------------------------------------------------------------------------
+// Framebuffer drawing
+// ---------------------------------------------------------------------------
+
+/** Add a colour to one LED. Out-of-matrix positions are ignored. */
+function addLed(column, row, color, intensity = 1) {
+  const wholeColumn = Math.floor(column);
+  const wholeRow = Math.floor(row);
+  if (wholeColumn < 0 || wholeRow < 0 || wholeColumn >= MATRIX_SIZE || wholeRow >= MATRIX_SIZE) return; // off the matrix
+  const offset = (wholeRow * MATRIX_SIZE + wholeColumn) * 3;
+  framebuffer[offset] += color[0] * intensity;
+  framebuffer[offset + 1] += color[1] * intensity;
+  framebuffer[offset + 2] += color[2] * intensity;
+}
+
+/** Draw centred text in the 3x5 font. `color` is an RGB array or a function (column, row) → RGB. */
+function drawText(text, topRow, color, intensity = 1, scale = 1) {
+  const glyphPitch = (GLYPH_COLUMNS + 1) * scale;
+  const textWidth = text.length * glyphPitch - scale;
+  const leftColumn = Math.floor((MATRIX_SIZE - textWidth) / 2);
+  [...text].forEach((character, characterIndex) => {
+    const glyph = TINY_FONT[character];
+    if (!glyph) return; // space or a letter the font lacks: leave the gap dark
+    glyph.forEach((glyphRow, glyphRowIndex) => {
+      [...glyphRow].forEach((glyphCell, glyphColumnIndex) => {
+        if (glyphCell !== "#") return; // unlit glyph cell
+        for (let scaleRow = 0; scaleRow < scale; scaleRow++) {
+          for (let scaleColumn = 0; scaleColumn < scale; scaleColumn++) {
+            const column = leftColumn + characterIndex * glyphPitch + glyphColumnIndex * scale + scaleColumn;
+            const row = topRow + glyphRowIndex * scale + scaleRow;
+            const ledColor = typeof color === "function" ? color(column, row) : color;
+            addLed(column, row, ledColor, intensity);
+          }
+        }
+      });
+    });
+  });
+}
+
+/** Convert a hue 0..1 to a saturated RGB colour, e.g. 0.33 → [0, 255, 0]. */
+function convertHueToColor(hue) {
+  const sector = (((hue % 1) + 1) % 1) * 6;
+  const rising = sector % 1;
+  const falling = 1 - rising;
+  const sectorColors = [[1, rising, 0], [falling, 1, 0], [0, 1, rising], [0, falling, 1], [rising, 0, 1], [1, 0, falling]];
+  return sectorColors[Math.floor(sector)].map((channel) => channel * 255);
+}
+
+// ---------------------------------------------------------------------------
+// Level runtime
+// ---------------------------------------------------------------------------
+
+/** Build the mutable runtime copy of a level definition: wall grid, enemies, spawners, boss. */
+function buildLevelRuntime(levelDefinition) {
+  const wallGrid = new Uint8Array(MATRIX_SIZE * MATRIX_SIZE);
+  for (let index = 0; index < MATRIX_SIZE; index++) {
+    wallGrid[index] = 1; // top border
+    wallGrid[(MATRIX_SIZE - 1) * MATRIX_SIZE + index] = 1; // bottom border
+    wallGrid[index * MATRIX_SIZE] = 1; // left border
+    wallGrid[index * MATRIX_SIZE + MATRIX_SIZE - 1] = 1; // right border
+  }
+  for (const [wallX, wallY, wallWidth, wallHeight] of levelDefinition.walls ?? []) {
+    for (let row = wallY; row < wallY + wallHeight; row++) {
+      for (let column = wallX; column < wallX + wallWidth; column++) wallGrid[row * MATRIX_SIZE + column] = 1;
+    }
+  }
+  // Only walls that touch open floor are lit: solid wall interiors stay dark, which reads better and saves power.
+  const litWallCells = [];
+  for (let row = 0; row < MATRIX_SIZE; row++) {
+    for (let column = 0; column < MATRIX_SIZE; column++) {
+      if (!wallGrid[row * MATRIX_SIZE + column]) continue; // open floor
+      const neighbours = [[column + 1, row], [column - 1, row], [column, row + 1], [column, row - 1]];
+      const touchesFloor = neighbours.some(([neighbourColumn, neighbourRow]) =>
+        neighbourColumn >= 0 && neighbourRow >= 0 && neighbourColumn < MATRIX_SIZE && neighbourRow < MATRIX_SIZE &&
+        !wallGrid[neighbourRow * MATRIX_SIZE + neighbourColumn]);
+      if (touchesFloor) litWallCells.push([column, row]);
+    }
+  }
+  const bossDefinition = levelDefinition.boss;
+  return {
+    definition: levelDefinition,
+    wallGrid,
+    litWallCells,
+    enemies: (levelDefinition.enemies ?? []).map((enemy) => ({
+      kind: "patrol",
+      baseX: enemy.x + 0.5, baseY: enemy.y + 0.5,
+      x: enemy.x + 0.5, y: enemy.y + 0.5,
+      axis: enemy.axis ?? null, range: enemy.range ?? 0, speed: enemy.speed ?? 0, phase: enemy.phase ?? 0,
+    })),
+    spawners: (levelDefinition.spawners ?? []).map((spawner) => ({ ...spawner, nextSpawnAt: game.clock + spawner.intervalSeconds * 0.5 })),
+    boss: bossDefinition ? {
+      ...bossDefinition,
+      x: bossDefinition.x + 0.5, y: bossDefinition.y + 0.5,
+      waypointIndex: 0,
+      invulnerableUntil: 0,
+      nextShotAt: game.clock + bossDefinition.shotIntervalSeconds,
+      alive: true,
+    } : null,
+  };
+}
+
+/** True when the LED at a continuous position is wall or outside the matrix. */
+function isWall(positionX, positionY) {
+  const column = Math.floor(positionX);
+  const row = Math.floor(positionY);
+  if (column < 0 || row < 0 || column >= MATRIX_SIZE || row >= MATRIX_SIZE) return true; // outside counts as wall
+  return game.level.wallGrid[row * MATRIX_SIZE + column] === 1;
+}
+
+/** True when an LED position is inside a rectangle with x, y, width, height. */
+function isInsideRectangle(positionX, positionY, rectangle) {
+  return positionX >= rectangle.x && positionX < rectangle.x + rectangle.width &&
+    positionY >= rectangle.y && positionY < rectangle.y + rectangle.height;
+}
+
+/** True while a lava zone is in its hot phase. */
+function isLavaHot(lavaZone) {
+  const cycleSeconds = lavaZone.onSeconds + lavaZone.offSeconds;
+  const cyclePosition = (((game.clock + lavaZone.offsetSeconds) % cycleSeconds) + cycleSeconds) % cycleSeconds;
+  return cyclePosition < lavaZone.onSeconds;
+}
+
+function isExitLocked() {
+  return Boolean(game.level.boss && game.level.boss.alive);
+}
+
+// ---------------------------------------------------------------------------
+// Mode changes
+// ---------------------------------------------------------------------------
+
+function setMode(mode) {
+  game.mode = mode;
+  game.modeStartedAt = game.clock;
+}
+
+function getSecondsInMode() {
+  return game.clock - game.modeStartedAt;
+}
+
+/** Reset the level at `levelIndex` to its start state. Every death restarts the level, as on the original. */
+function startLevel(levelIndex) {
+  game.levelIndex = levelIndex;
+  game.level = buildLevelRuntime(LEVELS[levelIndex]);
+  const [startColumn, startRow] = LEVELS[levelIndex].start;
+  game.player = { x: startColumn + 0.5, y: startRow + 0.5, twangStartedAt: -Infinity };
+  game.particles = [];
+  game.levelStartedAt = game.clock;
+  showLevelPanel();
+  renderRunLog();
+}
+
+function startRun(levelIndex) {
+  game.lives = STARTING_LIVES;
+  startLevel(levelIndex);
+  setMode("intro");
+}
+
+function killPlayer() {
+  game.lives -= 1;
+  levelStats[game.levelIndex].deaths += 1;
+  spawnBurst(game.player.x, game.player.y, PLAYER_GREEN, 26, 22);
+  spawnBurst(game.player.x, game.player.y, ENEMY_RED, 14, 14);
+  playTone(320, 40, 0.6, "sawtooth", 0.1);
+  renderRunLog();
+  setMode("dying");
+}
+
+function winLevel() {
+  const clearSeconds = game.clock - game.levelStartedAt;
+  const stats = levelStats[game.levelIndex];
+  if (stats.bestSeconds === null || clearSeconds < stats.bestSeconds) stats.bestSeconds = clearSeconds;
+  playArpeggio([523, 659, 784, 1046]);
+  renderRunLog();
+  setMode("levelWon");
+}
+
+// ---------------------------------------------------------------------------
+// Particles
+// ---------------------------------------------------------------------------
+
+function spawnBurst(originX, originY, color, count, maximumSpeed) {
+  for (let index = 0; index < count; index++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = maximumSpeed * (0.3 + Math.random() * 0.7);
+    game.particles.push({
+      x: originX, y: originY,
+      velocityX: Math.cos(angle) * speed, velocityY: Math.sin(angle) * speed,
+      bornAt: game.clock, lifeSeconds: 0.6 + Math.random() * 0.6, color,
+    });
+  }
+}
+
+function advanceParticles(deltaSeconds) {
+  const PARTICLE_DRAG = 2.2; // particles lose speed at this rate per second, so bursts settle
+  for (const particle of game.particles) {
+    particle.x += particle.velocityX * deltaSeconds;
+    particle.y += particle.velocityY * deltaSeconds;
+    const dragFactor = Math.max(0, 1 - PARTICLE_DRAG * deltaSeconds);
+    particle.velocityX *= dragFactor;
+    particle.velocityY *= dragFactor;
+  }
+  game.particles = game.particles.filter((particle) => game.clock - particle.bornAt < particle.lifeSeconds);
+}
+
+function drawParticles() {
+  for (const particle of game.particles) {
+    const age = (game.clock - particle.bornAt) / particle.lifeSeconds;
+    addLed(particle.x, particle.y, particle.color, 1 - age);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Game update
+// ---------------------------------------------------------------------------
+
+function advanceGame(deltaSeconds) {
+  game.clock += deltaSeconds;
+  const twangPressed = consumeTwang();
+  advanceParticles(deltaSeconds);
+
+  switch (game.mode) {
+    case "title":
+      if (twangPressed) startRun(0);
+      break;
+    case "intro":
+      // The card skips on twang, but not in its first 0.3 s, so the start twang does not skip it too.
+      if (getSecondsInMode() > INTRO_SECONDS || (twangPressed && getSecondsInMode() > 0.3)) {
+        game.levelStartedAt = game.clock;
+        setMode("play");
+      }
+      break;
+    case "play":
+      advancePlay(deltaSeconds, twangPressed);
+      break;
+    case "dying":
+      if (getSecondsInMode() < DEATH_SECONDS) break; // explosion still playing
+      if (game.lives <= 0) {
+        setMode("gameOver");
+        playArpeggio([392, 330, 262, 196]);
+      } else {
+        startLevel(game.levelIndex);
+        setMode("play");
+      }
+      break;
+    case "levelWon":
+      if (getSecondsInMode() < LEVEL_WON_SECONDS) break; // exit rings still playing
+      if (game.levelIndex + 1 >= LEVELS.length) {
+        setMode("victory");
+        game.nextFireworkAt = game.clock;
+      } else {
+        startLevel(game.levelIndex + 1);
+        setMode("intro");
+      }
+      break;
+    case "gameOver":
+    case "victory":
+      if (game.mode === "victory" && game.clock >= game.nextFireworkAt) {
+        const FIREWORK_SPACING_SECONDS = 0.35; // one burst every 0.35 s on the victory screen
+        spawnBurst(8 + Math.random() * 48, 8 + Math.random() * 30, convertHueToColor(Math.random()), 30, 26);
+        game.nextFireworkAt = game.clock + FIREWORK_SPACING_SECONDS;
+      }
+      if (twangPressed && getSecondsInMode() > END_SCREEN_LOCK_SECONDS) {
+        setMode("title");
+        showLevelPanel();
+      }
+      break;
+  }
+}
+
+function getTwangProgress() {
+  return (game.clock - game.player.twangStartedAt) / TWANG_SECONDS; // 0..1 while attacking
+}
+
+function isTwanging() {
+  return getTwangProgress() < 1;
+}
+
+function getTwangRadius() {
+  return settings.twangRadius * Math.min(1, getTwangProgress() / TWANG_GROW_SHARE);
+}
+
+function advancePlay(deltaSeconds, twangPressed) {
+  const level = game.level;
+  const player = game.player;
+
+  if (twangPressed && !isTwanging()) {
+    player.twangStartedAt = game.clock;
+    playTone(900, 180, 0.18, "sawtooth", 0.07);
+  }
+
+  // Movement: tilt sets velocity directly, as on the original. A twang freezes the player.
+  const tilt = readTilt();
+  let velocityX = isTwanging() ? 0 : tilt.x * settings.playerSpeed;
+  let velocityY = isTwanging() ? 0 : tilt.y * settings.playerSpeed;
+  for (const conveyor of level.definition.conveyors ?? []) {
+    if (!isInsideRectangle(player.x, player.y, conveyor)) continue; // player is not on this belt
+    velocityX += conveyor.pushX * conveyor.speed;
+    velocityY += conveyor.pushY * conveyor.speed;
+  }
+  const nextX = player.x + velocityX * deltaSeconds;
+  if (!isWall(nextX, player.y)) player.x = nextX;
+  const nextY = player.y + velocityY * deltaSeconds;
+  if (!isWall(player.x, nextY)) player.y = nextY;
+
+  // Enemies.
+  for (const enemy of level.enemies) {
+    if (enemy.kind === "patrol") {
+      const swing = Math.sin(game.clock * enemy.speed + enemy.phase) * enemy.range;
+      enemy.x = enemy.baseX + (enemy.axis === "x" ? swing : 0);
+      enemy.y = enemy.baseY + (enemy.axis === "y" ? swing : 0);
+    } else {
+      enemy.x += enemy.velocityX * deltaSeconds;
+      enemy.y += enemy.velocityY * deltaSeconds;
+      if (isWall(enemy.x, enemy.y)) enemy.dead = true; // runners break on walls
+    }
+  }
+  for (const spawner of level.spawners) {
+    if (game.clock < spawner.nextSpawnAt) continue; // not time to fire yet
+    level.enemies.push({
+      kind: "runner",
+      x: spawner.x + 0.5 + spawner.directionX, y: spawner.y + 0.5 + spawner.directionY,
+      velocityX: spawner.directionX * spawner.speed, velocityY: spawner.directionY * spawner.speed,
+    });
+    spawner.nextSpawnAt += spawner.intervalSeconds;
+  }
+  if (level.boss && level.boss.alive) advanceBoss(level.boss, deltaSeconds);
+
+  // Twang hits.
+  if (isTwanging()) {
+    const radius = getTwangRadius();
+    for (const enemy of level.enemies) {
+      if (enemy.dead) continue; // already destroyed this frame
+      if (Math.hypot(enemy.x - player.x, enemy.y - player.y) > radius + 0.5) continue; // outside the ring
+      enemy.dead = true;
+      spawnBurst(enemy.x, enemy.y, enemy.kind === "runner" ? RUNNER_ORANGE : ENEMY_RED, 10, 14);
+      playTone(420, 80, 0.12, "square", 0.06);
+    }
+    const boss = level.boss;
+    if (boss && boss.alive && game.clock >= boss.invulnerableUntil &&
+        Math.hypot(boss.x - player.x, boss.y - player.y) <= radius + 1.5) {
+      hitBoss(boss);
+    }
+  }
+  level.enemies = level.enemies.filter((enemy) => !enemy.dead);
+
+  // Deaths.
+  if (!settings.godMode) {
+    const touchesEnemy = level.enemies.some((enemy) => Math.hypot(enemy.x - player.x, enemy.y - player.y) < PLAYER_HIT_DISTANCE);
+    const touchesBoss = Boolean(level.boss && level.boss.alive &&
+      Math.hypot(level.boss.x - player.x, level.boss.y - player.y) < BOSS_HIT_DISTANCE);
+    const touchesLava = (level.definition.lava ?? []).some((lavaZone) => isLavaHot(lavaZone) && isInsideRectangle(player.x, player.y, lavaZone));
+    if (touchesEnemy || touchesBoss || touchesLava) {
+      killPlayer();
+      return; // the rest of the frame does not apply to a dead player
+    }
+  }
+
+  // Exit.
+  const [exitColumn, exitRow] = level.definition.exit;
+  if (!isExitLocked() && Math.hypot(exitColumn + 0.5 - player.x, exitRow + 0.5 - player.y) < EXIT_REACH_DISTANCE) winLevel();
+}
+
+function advanceBoss(boss, deltaSeconds) {
+  const [targetColumn, targetRow] = boss.waypoints[boss.waypointIndex];
+  const offsetX = targetColumn + 0.5 - boss.x;
+  const offsetY = targetRow + 0.5 - boss.y;
+  const distance = Math.hypot(offsetX, offsetY);
+  const step = boss.moveSpeed * deltaSeconds;
+  if (distance <= step) {
+    // Waypoint reached: head for the next one.
+    boss.waypointIndex = (boss.waypointIndex + 1) % boss.waypoints.length;
+  } else {
+    boss.x += (offsetX / distance) * step;
+    boss.y += (offsetY / distance) * step;
+  }
+  if (game.clock >= boss.nextShotAt) {
+    const aimX = game.player.x - boss.x;
+    const aimY = game.player.y - boss.y;
+    const aimLength = Math.hypot(aimX, aimY) || 1;
+    game.level.enemies.push({
+      kind: "runner",
+      x: boss.x + (aimX / aimLength) * 2.5, y: boss.y + (aimY / aimLength) * 2.5,
+      velocityX: (aimX / aimLength) * boss.shotSpeed, velocityY: (aimY / aimLength) * boss.shotSpeed,
+    });
+    boss.nextShotAt = game.clock + boss.shotIntervalSeconds;
+  }
+}
+
+function hitBoss(boss) {
+  boss.hitPoints -= 1;
+  spawnBurst(boss.x, boss.y, BOSS_PURPLE, 24, 20);
+  playTone(200, 60, 0.3, "square", 0.09);
+  if (boss.hitPoints <= 0) {
+    boss.alive = false;
+    spawnBurst(boss.x, boss.y, TWANG_YELLOW, 50, 30);
+    playArpeggio([262, 392, 523, 784]);
+    return; // dead boss: no teleport
+  }
+  boss.invulnerableUntil = game.clock + BOSS_INVULNERABLE_SECONDS;
+  // Jump two waypoints away, so the boss lands somewhere the player is not.
+  boss.waypointIndex = (boss.waypointIndex + 2) % boss.waypoints.length;
+  const [jumpColumn, jumpRow] = boss.waypoints[boss.waypointIndex];
+  boss.x = jumpColumn + 0.5;
+  boss.y = jumpRow + 0.5;
+}
+
+// ---------------------------------------------------------------------------
+// Game drawing
+// ---------------------------------------------------------------------------
+
+function drawGame() {
+  framebuffer.fill(0);
+  const secondsInMode = getSecondsInMode();
+  switch (game.mode) {
+    case "title":
+      drawTitleScreen();
+      break;
+    case "intro": {
+      const LEVEL_PREVIEW_INTENSITY = 0.25; // the level shows dimmed behind the card
+      drawLevel(LEVEL_PREVIEW_INTENSITY);
+      drawText(`LEVEL ${game.levelIndex + 1}`, 29, TEXT_AMBER);
+      break;
+    }
+    case "play":
+      drawLevel(1);
+      drawPlayer();
+      break;
+    case "dying":
+      drawLevel(1);
+      break;
+    case "levelWon": {
+      drawLevel(1);
+      drawPlayer();
+      const [exitColumn, exitRow] = game.level.definition.exit;
+      const RING_SPEED = 60; // exit rings grow 60 LEDs per second
+      drawRing(exitColumn + 0.5, exitRow + 0.5, secondsInMode * RING_SPEED, PLAYER_GREEN, 1.5);
+      drawRing(exitColumn + 0.5, exitRow + 0.5, Math.max(0, secondsInMode - 0.2) * RING_SPEED, EXIT_WHITE, 1);
+      break;
+    }
+    case "gameOver":
+      drawText("GAME", 22, TEXT_RED, 1, 2);
+      drawText("OVER", 36, TEXT_RED, 1, 2);
+      break;
+    case "victory":
+      drawText("YOU", 38, (column) => convertHueToColor(column / 40 + game.clock * 0.3), 1, 2);
+      drawText("WIN", 50, (column) => convertHueToColor(column / 40 + game.clock * 0.3 + 0.5), 1, 2);
+      break;
+  }
+  drawParticles();
+}
+
+function drawTitleScreen() {
+  const wave = (column, row) => convertHueToColor(column / 64 + row / 90 - game.clock * 0.25);
+  drawText("TWANG", 12, wave, 1, 2);
+  drawText("2D", 26, wave, 1, 2);
+  // A spring line that wobbles across the matrix.
+  for (let column = 4; column < 60; column++) {
+    const springRow = 44 + Math.sin(column * 0.55 + game.clock * 6) * 2.2 * Math.sin(game.clock * 1.3);
+    addLed(column, springRow, [200, 160, 80], 0.7);
+  }
+  const BLINK_PERIOD_SECONDS = 1.2; // "twang to start" blinks once every 1.2 s
+  if (game.clock % BLINK_PERIOD_SECONDS < BLINK_PERIOD_SECONDS * 0.65) drawText("TWANG TO START", 54, TEXT_AMBER, 0.8);
+}
+
+function drawLevel(intensity) {
+  const level = game.level;
+  for (const [column, row] of level.litWallCells) addLed(column, row, WALL_STEEL, intensity);
+
+  const CHEVRON_SPEED = 8; // conveyor stripes move 8 LEDs per second
+  const STRIPE_SPACING = 4; // one lit stripe every 4 LEDs
+  for (const conveyor of level.definition.conveyors ?? []) {
+    for (let row = conveyor.y; row < conveyor.y + conveyor.height; row++) {
+      for (let column = conveyor.x; column < conveyor.x + conveyor.width; column++) {
+        const stripePosition = column * conveyor.pushX + row * conveyor.pushY - game.clock * CHEVRON_SPEED;
+        const isStripe = ((Math.floor(stripePosition) % STRIPE_SPACING) + STRIPE_SPACING) % STRIPE_SPACING === 0;
+        addLed(column, row, isStripe ? CONVEYOR_STRIPE_BLUE : CONVEYOR_BASE_BLUE, intensity * (isStripe ? 0.5 : 1));
+      }
+    }
+  }
+
+  for (const lavaZone of level.definition.lava ?? []) {
+    const hot = isLavaHot(lavaZone);
+    for (let row = lavaZone.y; row < lavaZone.y + lavaZone.height; row++) {
+      for (let column = lavaZone.x; column < lavaZone.x + lavaZone.width; column++) {
+        // Hot lava flickers per LED; cool lava is a steady ember.
+        const flicker = hot ? 0.55 + 0.45 * Math.sin(game.clock * 9 + column * 1.7 + row * 2.3) : 1;
+        addLed(column, row, hot ? LAVA_HOT : LAVA_COOL, intensity * flicker);
+      }
+    }
+  }
+
+  const [exitColumn, exitRow] = level.definition.exit;
+  if (isExitLocked()) {
+    addLed(exitColumn, exitRow, EXIT_LOCKED_GREY, intensity);
+  } else {
+    const EXIT_PULSE_SPEED = 5; // exit pulses about once per 1.3 s
+    const pulse = 0.55 + 0.45 * Math.sin(game.clock * EXIT_PULSE_SPEED);
+    addLed(exitColumn, exitRow, EXIT_WHITE, intensity * pulse);
+    for (const [neighbourColumn, neighbourRow] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      addLed(exitColumn + neighbourColumn, exitRow + neighbourRow, EXIT_WHITE, intensity * pulse * 0.15);
+    }
+  }
+
+  for (const spawner of level.spawners) addLed(spawner.x, spawner.y, SPAWNER_MAGENTA, intensity);
+  for (const enemy of level.enemies) addLed(enemy.x, enemy.y, enemy.kind === "runner" ? RUNNER_ORANGE : ENEMY_RED, intensity);
+
+  const boss = level.boss;
+  if (boss && boss.alive) {
+    const isFlashing = game.clock < boss.invulnerableUntil && Math.floor(game.clock * 12) % 2 === 0;
+    for (let rowOffset = -1; rowOffset <= 1; rowOffset++) {
+      for (let columnOffset = -1; columnOffset <= 1; columnOffset++) {
+        const isCore = rowOffset === 0 && columnOffset === 0;
+        addLed(boss.x + columnOffset, boss.y + rowOffset, isFlashing ? EXIT_WHITE : BOSS_PURPLE, intensity * (isCore ? 1 : 0.6));
+      }
+    }
+    // Remaining hit points show as LEDs above the boss.
+    for (let hitPointIndex = 0; hitPointIndex < boss.hitPoints; hitPointIndex++) {
+      addLed(boss.x - 1 + hitPointIndex, boss.y - 3, ENEMY_RED, intensity * 0.6);
+    }
+  }
+}
+
+function drawPlayer() {
+  const player = game.player;
+  addLed(player.x, player.y, PLAYER_GREEN);
+  const PLAYER_HALO = 0.12; // faint cross around the player LED so it stays easy to find
+  for (const [offsetX, offsetY] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) addLed(player.x + offsetX, player.y + offsetY, PLAYER_GREEN, PLAYER_HALO);
+  if (game.mode === "play" && isTwanging()) {
+    const radius = getTwangRadius();
+    const fade = 1 - getTwangProgress() * 0.6;
+    for (let row = Math.floor(player.y - radius - 1); row <= player.y + radius + 1; row++) {
+      for (let column = Math.floor(player.x - radius - 1); column <= player.x + radius + 1; column++) {
+        const distance = Math.hypot(column + 0.5 - player.x, row + 0.5 - player.y);
+        if (distance > radius || distance < 0.5) continue; // outside the ring, or the player LED itself
+        if (isWall(column + 0.5, row + 0.5)) continue; // the twang does not light walls
+        const edgeWeight = 0.15 + 0.85 * Math.pow(distance / Math.max(radius, 0.01), 3);
+        addLed(column, row, TWANG_YELLOW, edgeWeight * fade);
+      }
+    }
+  }
+}
+
+function drawRing(centerX, centerY, radius, color, thickness) {
+  for (let row = 0; row < MATRIX_SIZE; row++) {
+    for (let column = 0; column < MATRIX_SIZE; column++) {
+      const distance = Math.hypot(column + 0.5 - centerX, row + 0.5 - centerY);
+      const gap = Math.abs(distance - radius);
+      if (gap > thickness) continue; // LED not on the ring
+      addLed(column, row, color, 1 - gap / thickness);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Matrix rendering
+// ---------------------------------------------------------------------------
+
+const matrixCanvas = document.getElementById("matrix");
+const matrixContext = matrixCanvas.getContext("2d");
+const glowCanvas = document.createElement("canvas");
+glowCanvas.width = glowCanvas.height = MATRIX_SIZE;
+const glowContext = glowCanvas.getContext("2d");
+const glowImage = glowContext.createImageData(MATRIX_SIZE, MATRIX_SIZE);
+const darkLedLayer = document.createElement("canvas");
+const supportsCanvasFilter = "filter" in matrixContext;
+const screenState = { pixelSize: 0, ledPitch: 0, milliamps: 0 }; // e.g. { pixelSize: 1280, ledPitch: 20, milliamps: 4800 }
+
+/** Match the canvas backing size to its CSS size and redraw the unlit LED layer. */
+function resizeMatrixCanvas() {
+  const pixelRatio = window.devicePixelRatio || 1;
+  const pixelSize = Math.max(MATRIX_SIZE, Math.round(matrixCanvas.clientWidth * pixelRatio));
+  if (pixelSize === screenState.pixelSize) return; // size did not change
+  screenState.pixelSize = pixelSize;
+  screenState.ledPitch = pixelSize / MATRIX_SIZE;
+  matrixCanvas.width = matrixCanvas.height = pixelSize;
+  darkLedLayer.width = darkLedLayer.height = pixelSize;
+  const darkContext = darkLedLayer.getContext("2d");
+  darkContext.fillStyle = BOARD_COLOUR;
+  darkContext.fillRect(0, 0, pixelSize, pixelSize);
+  darkContext.fillStyle = DARK_LED_COLOUR;
+  const dotRadius = screenState.ledPitch * LED_DOT_RADIUS;
+  for (let row = 0; row < MATRIX_SIZE; row++) {
+    for (let column = 0; column < MATRIX_SIZE; column++) {
+      darkContext.beginPath();
+      darkContext.arc((column + 0.5) * screenState.ledPitch, (row + 0.5) * screenState.ledPitch, dotRadius, 0, Math.PI * 2);
+      darkContext.fill();
+    }
+  }
+}
+
+/** Copy the framebuffer to the screen as glowing LED dots, and total the estimated current. */
+function renderMatrix() {
+  const pixels = glowImage.data;
+  let milliamps = 0;
+  for (let ledIndex = 0; ledIndex < MATRIX_SIZE * MATRIX_SIZE; ledIndex++) {
+    const red = Math.min(255, framebuffer[ledIndex * 3]);
+    const green = Math.min(255, framebuffer[ledIndex * 3 + 1]);
+    const blue = Math.min(255, framebuffer[ledIndex * 3 + 2]);
+    milliamps += IDLE_MILLIAMPS_PER_LED + ((red + green + blue) / 255) * MILLIAMPS_PER_CHANNEL;
+    pixels[ledIndex * 4] = 255 * Math.pow(red / 255, DISPLAY_GAMMA);
+    pixels[ledIndex * 4 + 1] = 255 * Math.pow(green / 255, DISPLAY_GAMMA);
+    pixels[ledIndex * 4 + 2] = 255 * Math.pow(blue / 255, DISPLAY_GAMMA);
+    pixels[ledIndex * 4 + 3] = 255;
+  }
+  screenState.milliamps = milliamps;
+  glowContext.putImageData(glowImage, 0, 0);
+
+  const { pixelSize, ledPitch } = screenState;
+  matrixContext.globalCompositeOperation = "source-over";
+  matrixContext.globalAlpha = 1;
+  matrixContext.drawImage(darkLedLayer, 0, 0);
+
+  // Glow: the 64x64 image scaled up, blurred, and added on top.
+  matrixContext.globalCompositeOperation = "lighter";
+  matrixContext.imageSmoothingEnabled = true;
+  if (supportsCanvasFilter) matrixContext.filter = `blur(${ledPitch * 0.9}px)`;
+  matrixContext.globalAlpha = 0.85;
+  matrixContext.drawImage(glowCanvas, 0, 0, pixelSize, pixelSize);
+  if (supportsCanvasFilter) matrixContext.filter = "none";
+  matrixContext.globalAlpha = 1;
+
+  // Crisp LED dots for every LED that is lit.
+  const LIT_THRESHOLD = 6; // channel sum below 6 counts as off
+  const dotRadius = ledPitch * LED_DOT_RADIUS;
+  for (let ledIndex = 0; ledIndex < MATRIX_SIZE * MATRIX_SIZE; ledIndex++) {
+    const red = pixels[ledIndex * 4];
+    const green = pixels[ledIndex * 4 + 1];
+    const blue = pixels[ledIndex * 4 + 2];
+    if (red + green + blue < LIT_THRESHOLD) continue; // dark LED, already on the base layer
+    const column = ledIndex % MATRIX_SIZE;
+    const row = Math.floor(ledIndex / MATRIX_SIZE);
+    matrixContext.fillStyle = `rgb(${red},${green},${blue})`;
+    matrixContext.beginPath();
+    matrixContext.arc((column + 0.5) * ledPitch, (row + 0.5) * ledPitch, dotRadius, 0, Math.PI * 2);
+    matrixContext.fill();
+  }
+  matrixContext.globalCompositeOperation = "source-over";
+}
+
+// ---------------------------------------------------------------------------
+// Input: keyboard, virtual spring, gamepad
+// ---------------------------------------------------------------------------
+
+const pressedKeys = new Set();
+const KEY_DIRECTIONS = { // every key that tilts, with its direction
+  ArrowLeft: [-1, 0], KeyA: [-1, 0], ArrowRight: [1, 0], KeyD: [1, 0],
+  ArrowUp: [0, -1], KeyW: [0, -1], ArrowDown: [0, 1], KeyS: [0, 1],
+};
+const springPad = {
+  pointerId: null,
+  tiltX: 0, tiltY: 0, // knob offset, -1..1, e.g. 0.4
+  lastMoveTime: 0, // performance.now() of the last pointer move, e.g. 5321.7
+  lastFlickAt: -Infinity,
+  wobbleStartedAt: -Infinity, // performance.now() of the last twang, drives the knob wobble animation
+};
+const gamepadState = { tiltX: 0, tiltY: 0, wasButtonDown: false };
+let pendingTwang = false;
+
+function triggerTwang() {
+  pendingTwang = true;
+  springPad.wobbleStartedAt = performance.now();
+  getAudioContext(); // a twang is a user gesture, so audio may start here
+}
+
+function consumeTwang() {
+  const twangPressed = pendingTwang;
+  pendingTwang = false;
+  return twangPressed;
+}
+
+/** Remove the dead zone from an analog vector and rescale the rest to 0..1, e.g. {x: 0.56} → {x: 0.5} with dead zone 0.12. */
+function applyDeadZone(vectorX, vectorY) {
+  const magnitude = Math.hypot(vectorX, vectorY);
+  if (magnitude <= settings.deadZone) return { x: 0, y: 0 }; // inside the dead zone
+  const scaledMagnitude = Math.min(1, (magnitude - settings.deadZone) / (1 - settings.deadZone));
+  return { x: (vectorX / magnitude) * scaledMagnitude, y: (vectorY / magnitude) * scaledMagnitude };
+}
+
+/** Combine every input source into one tilt vector with length ≤ 1. */
+function readTilt() {
+  let tiltX = 0;
+  let tiltY = 0;
+  for (const code of pressedKeys) {
+    const direction = KEY_DIRECTIONS[code];
+    if (!direction) continue; // key does not tilt
+    tiltX += direction[0];
+    tiltY += direction[1];
+  }
+  const padTilt = applyDeadZone(springPad.tiltX, springPad.tiltY);
+  const gamepadTilt = applyDeadZone(gamepadState.tiltX, gamepadState.tiltY);
+  tiltX += padTilt.x + gamepadTilt.x;
+  tiltY += padTilt.y + gamepadTilt.y;
+  const magnitude = Math.hypot(tiltX, tiltY);
+  if (magnitude > 1) return { x: tiltX / magnitude, y: tiltY / magnitude }; // diagonal keys or several sources at once
+  return { x: tiltX, y: tiltY };
+}
+
+function isFormControl(target) {
+  return target instanceof HTMLElement && ["INPUT", "SELECT", "TEXTAREA", "BUTTON"].includes(target.tagName);
+}
+
+window.addEventListener("keydown", (event) => {
+  if (isFormControl(event.target)) return; // let sliders and menus keep their own keys
+  if (event.code === "Space" || event.code === "Enter") {
+    event.preventDefault();
+    if (!event.repeat) triggerTwang();
+    return; // twang keys do not tilt
+  }
+  if (KEY_DIRECTIONS[event.code]) {
+    event.preventDefault();
+    pressedKeys.add(event.code);
+    getAudioContext();
+  }
+});
+window.addEventListener("keyup", (event) => pressedKeys.delete(event.code));
+window.addEventListener("blur", () => pressedKeys.clear());
+
+const springPadCanvas = document.getElementById("spring-pad");
+const springPadContext = springPadCanvas.getContext("2d");
+const SPRING_PAD_REACH = 0.4; // full tilt when the knob is dragged 40 % of the pad width from centre
+
+function updatePadTiltFromPointer(event) {
+  const bounds = springPadCanvas.getBoundingClientRect();
+  let tiltX = (event.clientX - (bounds.left + bounds.width / 2)) / (bounds.width * SPRING_PAD_REACH);
+  let tiltY = (event.clientY - (bounds.top + bounds.height / 2)) / (bounds.height * SPRING_PAD_REACH);
+  const magnitude = Math.hypot(tiltX, tiltY);
+  if (magnitude > 1) {
+    tiltX /= magnitude;
+    tiltY /= magnitude;
+  }
+  const now = performance.now();
+  const elapsedSeconds = Math.max(0.001, (now - springPad.lastMoveTime) / 1000);
+  const knobSpeed = Math.hypot(tiltX - springPad.tiltX, tiltY - springPad.tiltY) / elapsedSeconds;
+  const FLICK_SPEED = 14; // a knob move faster than 14 full tilts per second counts as a twang
+  const FLICK_COOLDOWN_MS = 350; // at most one flick twang every 350 ms
+  if (springPad.pointerId !== null && knobSpeed > FLICK_SPEED && now - springPad.lastFlickAt > FLICK_COOLDOWN_MS) {
+    springPad.lastFlickAt = now;
+    triggerTwang();
+  }
+  springPad.tiltX = tiltX;
+  springPad.tiltY = tiltY;
+  springPad.lastMoveTime = now;
+}
+
+springPadCanvas.addEventListener("pointerdown", (event) => {
+  springPadCanvas.setPointerCapture(event.pointerId);
+  springPad.pointerId = event.pointerId;
+  springPad.lastMoveTime = performance.now();
+  updatePadTiltFromPointer(event);
+  getAudioContext();
+});
+springPadCanvas.addEventListener("pointermove", (event) => {
+  if (event.pointerId !== springPad.pointerId) return; // a different finger or a hover
+  updatePadTiltFromPointer(event);
+});
+function releaseSpringPad(event) {
+  if (event.pointerId !== springPad.pointerId) return; // not the finger that holds the knob
+  springPad.pointerId = null;
+  springPad.tiltX = 0;
+  springPad.tiltY = 0;
+}
+springPadCanvas.addEventListener("pointerup", releaseSpringPad);
+springPadCanvas.addEventListener("pointercancel", releaseSpringPad);
+
+document.getElementById("twang-button").addEventListener("click", () => triggerTwang());
+matrixCanvas.addEventListener("pointerdown", () => matrixCanvas.focus());
+
+function pollGamepad() {
+  let gamepads = [];
+  try {
+    gamepads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+  } catch (error) {
+    gamepads = []; // the frame may refuse gamepad access
+  }
+  const gamepad = gamepads[0];
+  if (!gamepad) {
+    gamepadState.tiltX = gamepadState.tiltY = 0;
+    return; // no gamepad connected
+  }
+  gamepadState.tiltX = gamepad.axes[0] ?? 0;
+  gamepadState.tiltY = gamepad.axes[1] ?? 0;
+  const isButtonDown = gamepad.buttons.some((button) => button.pressed);
+  if (isButtonDown && !gamepadState.wasButtonDown) triggerTwang();
+  gamepadState.wasButtonDown = isButtonDown;
+}
+
+// ---------------------------------------------------------------------------
+// Spring pad drawing
+// ---------------------------------------------------------------------------
+
+const themeColors = (() => {
+  const style = getComputedStyle(document.documentElement);
+  return {
+    brass: style.getPropertyValue("--brass").trim(),
+    brassDim: style.getPropertyValue("--brass-dim").trim(),
+    line: style.getPropertyValue("--line").trim(),
+    bezel: style.getPropertyValue("--bezel").trim(),
+    muted: style.getPropertyValue("--muted").trim(),
+  };
+})();
+
+function drawSpringPad() {
+  const pixelRatio = window.devicePixelRatio || 1;
+  const cssSize = springPadCanvas.clientWidth;
+  const pixelSize = Math.round(cssSize * pixelRatio);
+  if (springPadCanvas.width !== pixelSize) springPadCanvas.width = springPadCanvas.height = pixelSize;
+  const context = springPadContext;
+  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  context.clearRect(0, 0, cssSize, cssSize);
+  const center = cssSize / 2;
+  const reach = cssSize * SPRING_PAD_REACH;
+
+  context.fillStyle = themeColors.bezel;
+  context.beginPath();
+  context.arc(center, center, cssSize / 2 - 1, 0, Math.PI * 2);
+  context.fill();
+  context.strokeStyle = themeColors.line;
+  context.lineWidth = 1;
+  for (const ringShare of [0.33, 0.66, 1]) {
+    context.beginPath();
+    context.arc(center, center, reach * ringShare, 0, Math.PI * 2);
+    context.stroke();
+  }
+  context.setLineDash([3, 3]);
+  context.strokeStyle = themeColors.muted;
+  context.beginPath();
+  context.arc(center, center, Math.max(1, reach * settings.deadZone), 0, Math.PI * 2);
+  context.stroke();
+  context.setLineDash([]);
+
+  // Knob position: the combined tilt, plus a damped wobble after each twang.
+  const tilt = readTilt();
+  const wobbleAge = (performance.now() - springPad.wobbleStartedAt) / 1000;
+  const WOBBLE_FREQUENCY = 38; // radians per second of the spring's ring-out
+  const WOBBLE_DAMPING = 6; // how fast the ring-out dies away
+  const wobble = wobbleAge < 1.2 ? Math.sin(wobbleAge * WOBBLE_FREQUENCY) * Math.exp(-wobbleAge * WOBBLE_DAMPING) * 0.45 : 0;
+  const tiltLength = Math.hypot(tilt.x, tilt.y);
+  const wobbleDirectionX = tiltLength > 0.05 ? -tilt.y / tiltLength : 1;
+  const wobbleDirectionY = tiltLength > 0.05 ? tilt.x / tiltLength : 0;
+  const knobX = center + (tilt.x + wobbleDirectionX * wobble) * reach;
+  const knobY = center + (tilt.y + wobbleDirectionY * wobble) * reach;
+
+  // Spring coil from the base to the knob, drawn as a zigzag.
+  const COIL_TURNS = 9; // zigzag points along the spring
+  const COIL_WIDTH = 6; // zigzag half-width in CSS pixels
+  const springLength = Math.hypot(knobX - center, knobY - center) || 1;
+  const normalX = -(knobY - center) / springLength;
+  const normalY = (knobX - center) / springLength;
+  context.strokeStyle = themeColors.brass;
+  context.lineWidth = 2;
+  context.beginPath();
+  context.moveTo(center, center);
+  for (let turnIndex = 1; turnIndex < COIL_TURNS; turnIndex++) {
+    const share = turnIndex / COIL_TURNS;
+    const side = turnIndex % 2 === 0 ? 1 : -1;
+    context.lineTo(center + (knobX - center) * share + normalX * COIL_WIDTH * side,
+      center + (knobY - center) * share + normalY * COIL_WIDTH * side);
+  }
+  context.lineTo(knobX, knobY);
+  context.stroke();
+
+  context.fillStyle = themeColors.brassDim;
+  context.beginPath();
+  context.arc(center, center, 7, 0, Math.PI * 2);
+  context.fill();
+  context.fillStyle = themeColors.brass;
+  context.beginPath();
+  context.arc(knobX, knobY, 12, 0, Math.PI * 2);
+  context.fill();
+}
+
+// ---------------------------------------------------------------------------
+// Sound
+// ---------------------------------------------------------------------------
+
+let audioContext = null;
+
+/** Return a running AudioContext, or null when sound is off or unavailable. */
+function getAudioContext() {
+  if (!settings.sound) return null; // sound switched off
+  if (!audioContext) {
+    try {
+      audioContext = new AudioContext();
+    } catch (error) {
+      return null; // browser refuses audio
+    }
+  }
+  if (audioContext.state === "suspended") audioContext.resume().catch(() => {});
+  return audioContext;
+}
+
+function playTone(startFrequency, endFrequency, durationSeconds, waveform, volume) {
+  const context = getAudioContext();
+  if (!context) return; // no audio
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  oscillator.type = waveform;
+  oscillator.frequency.setValueAtTime(startFrequency, context.currentTime);
+  oscillator.frequency.exponentialRampToValueAtTime(Math.max(1, endFrequency), context.currentTime + durationSeconds);
+  gain.gain.setValueAtTime(volume, context.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + durationSeconds);
+  oscillator.connect(gain).connect(context.destination);
+  oscillator.start();
+  oscillator.stop(context.currentTime + durationSeconds);
+}
+
+function playArpeggio(frequencies) {
+  const NOTE_SPACING_MS = 90; // gap between arpeggio notes
+  frequencies.forEach((frequency, noteIndex) => {
+    setTimeout(() => playTone(frequency, frequency, 0.16, "triangle", 0.08), noteIndex * NOTE_SPACING_MS);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Panels
+// ---------------------------------------------------------------------------
+
+const levelSelect = document.getElementById("setting-level");
+LEVELS.forEach((level, levelIndex) => {
+  const option = document.createElement("option");
+  option.value = String(levelIndex);
+  option.textContent = `${levelIndex + 1}. ${level.name}`;
+  levelSelect.append(option);
+});
+
+function showLevelPanel() {
+  const isOnTitle = game.mode === "title" && !game.level;
+  if (game.mode === "title") {
+    document.getElementById("level-name").textContent = "Title screen";
+    document.getElementById("level-hint").textContent = "Twang the spring to start.";
+    if (isOnTitle) return; // nothing else to show before the first run
+  } else {
+    const level = LEVELS[game.levelIndex];
+    document.getElementById("level-name").textContent = `${game.levelIndex + 1}. ${level.name}`;
+    document.getElementById("level-hint").textContent = level.hint;
+  }
+  levelSelect.value = String(game.levelIndex);
+}
+
+function renderRunLog() {
+  const logBody = document.getElementById("log-body");
+  logBody.replaceChildren(...LEVELS.map((level, levelIndex) => {
+    const tableRow = document.createElement("tr");
+    if (game.level && levelIndex === game.levelIndex && game.mode !== "title") tableRow.className = "current";
+    const stats = levelStats[levelIndex];
+    const bestText = stats.bestSeconds === null ? "—" : `${stats.bestSeconds.toFixed(1)} s`;
+    for (const [cellText, cellClass] of [[`${levelIndex + 1}. ${level.name}`, ""], [String(stats.deaths), "number"], [bestText, "number"]]) {
+      const tableCell = document.createElement("td");
+      tableCell.textContent = cellText;
+      if (cellClass) tableCell.className = cellClass;
+      tableRow.append(tableCell);
+    }
+    return tableRow;
+  }));
+}
+
+let lastHudUpdateAt = 0;
+function updateHud(now) {
+  const HUD_INTERVAL_MS = 100; // refresh the status row ten times per second
+  if (now - lastHudUpdateAt < HUD_INTERVAL_MS) return; // too soon
+  lastHudUpdateAt = now;
+  const isInRun = game.mode !== "title";
+  document.getElementById("hud-level").textContent = isInRun ? `${game.levelIndex + 1} / ${LEVELS.length}` : "—";
+  const livesElement = document.getElementById("hud-lives");
+  if (livesElement.childElementCount !== STARTING_LIVES) {
+    livesElement.replaceChildren(...Array.from({ length: STARTING_LIVES }, () => document.createElement("i")));
+  }
+  [...livesElement.children].forEach((lifeDot, lifeIndex) => lifeDot.classList.toggle("spent", !isInRun || lifeIndex >= game.lives));
+  const attemptSeconds = game.mode === "play" ? game.clock - game.levelStartedAt : 0;
+  document.getElementById("hud-time").textContent = `${attemptSeconds.toFixed(1)} s`;
+  document.getElementById("hud-power").textContent = `${(screenState.milliamps / 1000).toFixed(2)} A`;
+}
+
+function bindRangeSetting(inputId, outputId, settingName, formatValue) {
+  const input = document.getElementById(inputId);
+  const output = document.getElementById(outputId);
+  input.value = String(settings[settingName]);
+  output.textContent = formatValue(settings[settingName]);
+  input.addEventListener("input", () => {
+    settings[settingName] = Number(input.value);
+    output.textContent = formatValue(settings[settingName]);
+  });
+}
+
+bindRangeSetting("setting-speed", "output-speed", "playerSpeed", (value) => `${value} LED/s`);
+bindRangeSetting("setting-attack", "output-attack", "twangRadius", (value) => `${value} LEDs`);
+bindRangeSetting("setting-deadzone", "output-deadzone", "deadZone", (value) => `${Math.round(value * 100)} %`);
+
+document.getElementById("setting-god").addEventListener("change", (event) => { settings.godMode = event.target.checked; });
+document.getElementById("setting-sound").addEventListener("change", (event) => { settings.sound = event.target.checked; });
+levelSelect.addEventListener("change", () => {
+  startRun(Number(levelSelect.value));
+  levelSelect.blur();
+  matrixCanvas.focus();
+});
+document.getElementById("restart-button").addEventListener("click", () => {
+  startRun(game.mode === "title" && !game.level ? 0 : game.levelIndex);
+  matrixCanvas.focus();
+});
+document.getElementById("reset-log-button").addEventListener("click", () => {
+  for (const stats of levelStats) {
+    stats.deaths = 0;
+    stats.bestSeconds = null;
+  }
+  renderRunLog();
+});
+
+// ---------------------------------------------------------------------------
+// Main loop
+// ---------------------------------------------------------------------------
+
+let lastFrameTime = performance.now();
+function advanceFrame(now) {
+  const MAXIMUM_STEP_SECONDS = 0.05; // clamp long frames (tab switch) so nothing tunnels through walls
+  const deltaSeconds = Math.min(MAXIMUM_STEP_SECONDS, (now - lastFrameTime) / 1000);
+  lastFrameTime = now;
+  resizeMatrixCanvas();
+  pollGamepad();
+  advanceGame(deltaSeconds);
+  drawGame();
+  renderMatrix();
+  drawSpringPad();
+  updateHud(now);
+  requestAnimationFrame(advanceFrame);
+}
+
+/** Boot the game, restoring the level and run log after a live page update. */
+function startGame(savedState) {
+  if (Array.isArray(savedState?.levelStats)) {
+    savedState.levelStats.forEach((savedStats, levelIndex) => {
+      if (levelStats[levelIndex]) Object.assign(levelStats[levelIndex], savedStats);
+    });
+  }
+  const savedLevelIndex = savedState?.levelIndex;
+  if (typeof savedLevelIndex === "number" && savedState.mode !== "title" && savedLevelIndex < LEVELS.length) {
+    // Resume the saved level from its start.
+    game.lives = savedState.lives ?? STARTING_LIVES;
+    startLevel(savedLevelIndex);
+    setMode("intro");
+  } else {
+    showLevelPanel();
+    renderRunLog();
+  }
+  requestAnimationFrame(advanceFrame);
+}
+
+window.claude?.hot?.snapshot?.(() => ({
+  levelIndex: game.levelIndex, lives: game.lives, mode: game.mode, levelStats,
+}));
+if (window.claude?.hot?.ready) window.claude.hot.ready(startGame);
+else startGame(window.claude?.hot?.data ?? {});
+</script>
